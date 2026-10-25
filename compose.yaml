@@ -1,9 +1,7 @@
 services:
   backend:
     image: frappe-crm-helpdesk:v16
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
@@ -18,9 +16,7 @@ services:
 
   configurator:
     image: frappe-crm-helpdesk:v16
-    deploy:
-      restart_policy:
-        condition: none
+    restart: "no"
     entrypoint:
       - bash
       - -c
@@ -52,9 +48,7 @@ services:
 
   create-site:
     image: frappe-crm-helpdesk:v16
-    deploy:
-      restart_policy:
-        condition: none
+    restart: "no"
     volumes:
       - sites:/home/frappe/frappe-bench/sites
       - logs:/home/frappe/frappe-bench/logs
@@ -91,15 +85,13 @@ services:
 
   db:
     image: mariadb:10.6
+    restart: unless-stopped
     healthcheck:
       test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
       start_period: 10s
       interval: 5s
       timeout: 5s
       retries: 5
-    deploy:
-      restart_policy:
-        condition: on-failure
     command:
       - --character-set-server=utf8mb4
       - --collation-server=utf8mb4_unicode_ci
@@ -113,12 +105,10 @@ services:
 
   frontend:
     image: frappe-crm-helpdesk:v16
+    restart: unless-stopped
     depends_on:
       - websocket
       - backend
-    deploy:
-      restart_policy:
-        condition: on-failure
     command:
       - nginx-entrypoint.sh
     environment:
@@ -138,9 +128,7 @@ services:
 
   queue-long:
     image: frappe-crm-helpdesk:v16
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     command:
       - bench
       - worker
@@ -158,9 +146,7 @@ services:
 
   queue-short:
     image: frappe-crm-helpdesk:v16
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     command:
       - bench
       - worker
@@ -178,23 +164,17 @@ services:
 
   redis-queue:
     image: redis:6.2-alpine
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     volumes:
       - redis-queue-data:/data
 
   redis-cache:
     image: redis:6.2-alpine
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
 
   scheduler:
     image: frappe-crm-helpdesk:v16
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     command:
       - bench
       - schedule
@@ -207,9 +187,7 @@ services:
 
   websocket:
     image: frappe-crm-helpdesk:v16
-    deploy:
-      restart_policy:
-        condition: on-failure
+    restart: unless-stopped
     command:
       - node
       - /home/frappe/frappe-bench/apps/frappe/socketio.js
