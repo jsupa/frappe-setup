@@ -211,6 +211,12 @@ def setup_financial_custom_fields():
             "fieldtype": "Datetime",
             "insert_after": "custom_ruz_sync_status",
         },
+        {
+            "fieldname": "custom_additional_contacts",
+            "label": "Ďalšie kontakty (zo zlúčených leadov)",
+            "fieldtype": "Small Text",
+            "insert_after": "phone",
+        },
     ]
 
     create_custom_fields(
@@ -309,6 +315,7 @@ def setup_financial_field_layouts():
                         "email",
                         "mobile_no",
                         "phone",
+                        "custom_additional_contacts",
                     ],
                 }
             ],
