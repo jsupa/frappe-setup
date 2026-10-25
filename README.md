@@ -184,5 +184,24 @@ docker exec frappe-backend-1 bench --site menucka.local clear-cache
 
 ---
 
+## 🍽️ Migrácia databázy reštaurácií (`restaurant-list` -> Frappe CRM)
+
+Skript `scripts/migrate_restaurants.py` zabezpečuje kompletnú migráciu slovenských reštaurácií (`unikatne_restauracie_komplet_full.csv`) do Frappe CRM:
+1. Vytvorí vlastné polia (`Custom Field`) na **CRM Organization**, **Contact** a **CRM Lead** (IČO, denné menu, URL denného menu, Tier, Rating, počet recenzií, GPS, portály SME/Bistro/Bolt/Menucka, Buying Signals, Recommended Pitch).
+2. Aktualizuje rozloženie polí vo Frappe CRM UI (`CRM Fields Layout`).
+3. Nastaví predajnú pipeline (`CRM Lead Status`): `In Check` -> `In Contact` -> `Contacted` -> `Replied` -> `Deal` / `Ignored`.
+4. Zoskupí majiteľov podľa `IČO` / obchodného mena a vytvorí pre nich záznamy **CRM Organization** + **Contact**.
+5. Naimportuje všetky reštaurácie ako **CRM Lead** v počiatočnom stave `In Check` a prepojí ich s organizáciou a kontaktom majiteľa.
+
+### Spustenie migrácie:
+```bash
+docker cp unikatne_restauracie_komplet_full.csv frappe-backend-1:/tmp/restaurants.csv
+docker cp scripts/migrate_restaurants.py frappe-backend-1:/tmp/migrate_restaurants.py
+docker exec -w /home/frappe/frappe-bench/sites frappe-backend-1 \
+  /home/frappe/frappe-bench/env/bin/python /tmp/migrate_restaurants.py menucka.local /tmp/restaurants.csv
+```
+
+---
+
 ## 📄 Licencia
 MIT License. Vytvorené pre lokálne nasadenie Frappe v16, CRM a Helpdesku.
