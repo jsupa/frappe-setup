@@ -1152,6 +1152,193 @@ def create_lead_tasks():
     print(f"   -> Created {len(leads) * 4} CRM Tasks across {len(leads)} CRM Leads.")
 
 
+def setup_merge_lead_script():
+    print("Setting up 'Merge CRM Lead Script' Form Script...")
+    script_code = """class CRMLead {
+  onLoad() {
+    const existing = Array.isArray(this.actions) ? this.actions : []
+    this.actions = [
+      ...existing.filter((a) => a.label !== 'Merge Lead (Zlúčiť)'),
+      {
+        label: 'Merge Lead (Zlúčiť)',
+        icon: 'git-merge',
+        onClick: () => this.openMergeDialog(),
+      },
+    ]
+  }
+
+  async openMergeDialog() {
+    const sourceName = this.doc.name
+    const sourceTitle = this.doc.lead_name || this.doc.first_name || sourceName
+
+    const result = await this.formDialog({
+      title: `Zlúčiť Lead "${sourceTitle}" (${sourceName}) do iného Leadu`,
+      size: 'lg',
+      fields: [
+        {
+          fieldname: 'target_lead',
+          label: 'Cieľový Lead (Target Lead, ktorý ostane zachovaný)',
+          fieldtype: 'Link',
+          options: 'CRM Lead',
+          reqd: 1,
+        },
+        {
+          fieldname: 'copy_missing_fields',
+          label: 'Doplniť chýbajúce polia (IČO, web, menu URL, portály, kontakty) do cieľového Leadu',
+          fieldtype: 'Check',
+          default: 1,
+        },
+        {
+          fieldname: 'remove_duplicate_tasks',
+          label: 'Odstrániť duplicitné nezačaté úlohy (Todo/Backlog) z tohto Leadu pred zlúčením',
+          fieldtype: 'Check',
+          default: 1,
+        },
+      ],
+      defaults: {
+        copy_missing_fields: 1,
+        remove_duplicate_tasks: 1,
+      },
+      submitLabel: 'Zlúčiť Leady (Merge)',
+      cancelLabel: 'Zrušiť',
+    })
+
+    if (!result || !result.target_lead) return
+    const targetName = result.target_lead
+
+    if (targetName === sourceName) {
+      this.toast.error('Nemôžete zlúčiť Lead sám so sebou.')
+      return
+    }
+
+    try {
+      if (result.copy_missing_fields) {
+        const targetDoc = await this.call('frappe.client.get', {
+          doctype: 'CRM Lead',
+          name: targetName,
+        })
+
+        const copyFields = [
+          'email',
+          'mobile_no',
+          'phone',
+          'website',
+          'territory',
+          'custom_ico',
+          'custom_company_name',
+          'custom_organization_link',
+          'custom_contact_link',
+          'custom_city',
+          'custom_address',
+          'custom_daily_menu_url',
+          'custom_verification_reason',
+          'custom_sme_url',
+          'custom_bistro_url',
+          'custom_bolt_url',
+          'custom_menucka_url',
+          'custom_gps',
+          'custom_buying_signals',
+          'custom_recommended_pitch',
+        ]
+
+        const updates = {}
+        for (const f of copyFields) {
+          if (!targetDoc[f] && this.doc[f]) {
+            updates[f] = this.doc[f]
+          }
+        }
+
+        if (
+          targetDoc.custom_has_daily_menu !== 'ÁNO' &&
+          this.doc.custom_has_daily_menu === 'ÁNO'
+        ) {
+          updates.custom_has_daily_menu = 'ÁNO'
+        }
+
+        if (this.doc.custom_sources) {
+          const s1 = (targetDoc.custom_sources || '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+          const s2 = (this.doc.custom_sources || '')
+            .split(',')
+            .map((s) => s.trim())
+            .filter(Boolean)
+          const mergedSources = Array.from(new Set([...s1, ...s2])).join(', ')
+          if (mergedSources && mergedSources !== targetDoc.custom_sources) {
+            updates.custom_sources = mergedSources.slice(0, 140)
+          }
+        }
+
+        if (Object.keys(updates).length > 0) {
+          await this.call('frappe.client.set_value', {
+            doctype: 'CRM Lead',
+            name: targetName,
+            fieldname: updates,
+          })
+        }
+      }
+
+      if (result.remove_duplicate_tasks) {
+        const tasks = await this.call('frappe.client.get_list', {
+          doctype: 'CRM Task',
+          filters: {
+            reference_doctype: 'CRM Lead',
+            reference_docname: sourceName,
+            status: ['in', ['Todo', 'Backlog']],
+          },
+          fields: ['name'],
+          limit_page_length: 50,
+        })
+        if (tasks && tasks.length) {
+          for (const t of tasks) {
+            await this.call('frappe.client.delete', {
+              doctype: 'CRM Task',
+              name: t.name,
+            })
+          }
+        }
+      }
+
+      await this.call('frappe.model.rename_doc.update_document_title', {
+        doctype: 'CRM Lead',
+        docname: sourceName,
+        name: targetName,
+        merge: 1,
+        enqueue: 0,
+      })
+
+      this.toast.success(`Lead ${sourceName} bol úspešne zlúčený do ${targetName}.`)
+      this.router.push({ name: 'Lead', params: { leadId: targetName } })
+    } catch (err) {
+      console.error(err)
+      this.toast.error(err?.message || 'Nepodarilo sa zlúčiť Leady.')
+    }
+  }
+}
+"""
+    script_name = "Merge CRM Lead Script"
+    if frappe.db.exists("CRM Form Script", script_name):
+        frappe.db.set_value(
+            "CRM Form Script",
+            script_name,
+            {"script": script_code, "enabled": 1, "dt": "CRM Lead", "view": "Form"},
+        )
+    else:
+        frappe.get_doc(
+            {
+                "doctype": "CRM Form Script",
+                "name": script_name,
+                "dt": "CRM Lead",
+                "view": "Form",
+                "enabled": 1,
+                "is_standard": 0,
+                "script": script_code,
+            }
+        ).insert(ignore_permissions=True)
+    frappe.db.commit()
+
+
 def main():
     site = sys.argv[1] if len(sys.argv) > 1 else "menucka.local"
     csv_path = sys.argv[2] if len(sys.argv) > 2 else "/tmp/restaurants.csv"
@@ -1162,6 +1349,7 @@ def main():
 
     if tasks_only:
         create_lead_tasks()
+        setup_merge_lead_script()
         frappe.clear_cache()
         print(f"Total CRM Tasks: {frappe.db.count('CRM Task')}")
         return
@@ -1169,6 +1357,7 @@ def main():
     setup_custom_fields()
     setup_field_layouts()
     setup_lead_statuses()
+    setup_merge_lead_script()
     migrate_data(csv_path)
 
 
