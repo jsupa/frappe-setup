@@ -984,19 +984,187 @@ def migrate_data(csv_path: str):
             print(f"   -> Created {lead_idx}/{len(processed_rows)} leads...")
 
     frappe.db.commit()
+    create_lead_tasks()
     frappe.clear_cache()
-    print(f"=== Migration Complete! ===")
+    print("=== Migration Complete! ===")
     print(f"Total CRM Organizations: {frappe.db.count('CRM Organization')}")
     print(f"Total Contacts:          {frappe.db.count('Contact')}")
     print(f"Total CRM Leads:         {frappe.db.count('CRM Lead')}")
+    print(f"Total CRM Tasks:         {frappe.db.count('CRM Task')}")
+
+
+def create_lead_tasks():
+    from frappe.database.sequence import set_next_val
+    from frappe.utils import today
+
+    print("[7/7] Creating 4 Sales Playbook Tasks (Research, Initial Contact, Follow-up, Deal Closing) for every CRM Lead...")
+    frappe.db.sql("DELETE FROM `tabCRM Task` WHERE reference_doctype = 'CRM Lead'")
+    frappe.db.commit()
+
+    leads = frappe.get_all(
+        "CRM Lead",
+        fields=[
+            "name",
+            "lead_name",
+            "organization",
+            "email",
+            "mobile_no",
+            "website",
+            "lead_temperature",
+            "custom_ico",
+            "custom_company_name",
+            "custom_city",
+            "custom_has_daily_menu",
+            "custom_daily_menu_url",
+            "custom_tier",
+            "custom_sources",
+            "custom_buying_signals",
+            "custom_recommended_pitch",
+        ],
+        order_by="name asc",
+    )
+
+    max_existing = frappe.db.sql("SELECT COALESCE(MAX(name), 0) FROM `tabCRM Task`")[0][0] or 0
+    next_id = int(max_existing)
+    now_str = str(now_datetime())
+    today_str = str(today())
+
+    fields = [
+        "name",
+        "creation",
+        "modified",
+        "modified_by",
+        "owner",
+        "docstatus",
+        "idx",
+        "title",
+        "priority",
+        "start_date",
+        "reference_doctype",
+        "reference_docname",
+        "status",
+        "description",
+    ]
+
+    batch = []
+    for lead in leads:
+        tier = lead.get("custom_tier") or ""
+        temp = lead.get("lead_temperature") or ""
+        if tier == "Tier 1 (500+)" or temp == "Hot":
+            priority = "High"
+        elif tier == "Tier 2 (100-499)" or temp == "Warm":
+            priority = "Medium"
+        else:
+            priority = "Low"
+
+        r_name = (lead.get("lead_name") or lead.get("name"))[:85]
+        ico_info = f"{lead.get('custom_company_name') or lead.get('organization') or 'N/A'} (IČO: {lead.get('custom_ico') or 'N/A'})"
+        menu_info = f"Stav denného menu: {lead.get('custom_has_daily_menu') or 'N/A'} | URL: {lead.get('custom_daily_menu_url') or lead.get('website') or 'N/A'}"
+        contact_info = f"Tel: {lead.get('mobile_no') or 'N/A'} | Email: {lead.get('email') or 'N/A'} | Mesto: {lead.get('custom_city') or 'N/A'}"
+        pitch_info = lead.get("custom_recommended_pitch") or "Štandardná ponuka automatického publikovania denného menu a vlastného objednávkového systému."
+        signals_info = lead.get("custom_buying_signals") or "Overiť potenciál prevádzky."
+
+        tasks_spec = [
+            (
+                f"1. Research (Prieskum & overenie): {r_name}"[:140],
+                "Todo",
+                (
+                    f"<p><strong>1. Prieskum a kvalifikácia prevádzky ({r_name})</strong></p>"
+                    f"<ul>"
+                    f"<li>Skontrolovať web a denné menu — {menu_info}</li>"
+                    f"<li>Overiť majiteľa / konateľa na Finstat / ORSR — {ico_info}</li>"
+                    f"<li>Skontrolovať kontaktné údaje — {contact_info}</li>"
+                    f"<li>Zdroje / portály: {lead.get('custom_sources') or 'N/A'}</li>"
+                    f"</ul>"
+                ),
+            ),
+            (
+                f"2. Initial Contact (Prvé oslovenie): {r_name}"[:140],
+                "Backlog",
+                (
+                    f"<p><strong>2. Prvé oslovenie majiteľa / prevádzky ({r_name})</strong></p>"
+                    f"<ul>"
+                    f"<li>Kontaktovať telefonicky alebo e-mailom ({contact_info})</li>"
+                    f"<li><strong>Odporúčaný pitch:</strong> {pitch_info}</li>"
+                    f"<li><strong>Nákupné signály:</strong> {signals_info}</li>"
+                    f"<li>Po oslovení posunúť stav leadu do <em>In Contact</em> / <em>Contacted</em></li>"
+                    f"</ul>"
+                ),
+            ),
+            (
+                f"3. Follow-up (Pripomenutie / reakcia): {r_name}"[:140],
+                "Backlog",
+                (
+                    f"<p><strong>3. Follow-up a vyhodnotenie reakcie ({r_name})</strong></p>"
+                    f"<ul>"
+                    f"<li>Ak bez odpovede do 3 pracovných dní, urobiť telefonický/e-mailový follow-up</li>"
+                    f"<li>Zaslať ukážku riešenia / kalkuláciu úspory provízií oproti agregátorom</li>"
+                    f"<li>Pri odpovedi posunúť stav leadu do <em>Replied</em></li>"
+                    f"</ul>"
+                ),
+            ),
+            (
+                f"4. Deal Closing (Uzavretie dohody): {r_name}"[:140],
+                "Backlog",
+                (
+                    f"<p><strong>4. Uzavretie dohody a onboarding ({r_name})</strong></p>"
+                    f"<ul>"
+                    f"<li>Potvrdiť podmienky spolupráce a fakturačné údaje ({ico_info})</li>"
+                    f"<li>Nastaviť automatickú synchronizáciu denného menu ({lead.get('custom_daily_menu_url') or 'N/A'})</li>"
+                    f"<li>Prepnúť stav leadu na <em>Deal</em> (alebo <em>Ignored</em> pri nezáujme)</li>"
+                    f"</ul>"
+                ),
+            ),
+        ]
+
+        for idx_num, (title, status, desc) in enumerate(tasks_spec, start=1):
+            next_id += 1
+            batch.append(
+                (
+                    next_id,
+                    now_str,
+                    now_str,
+                    "Administrator",
+                    "Administrator",
+                    0,
+                    idx_num,
+                    title,
+                    priority,
+                    today_str,
+                    "CRM Lead",
+                    lead["name"],
+                    status,
+                    desc,
+                )
+            )
+
+        if len(batch) >= 2000:
+            frappe.db.bulk_insert("CRM Task", fields=fields, values=batch)
+            frappe.db.commit()
+            batch.clear()
+
+    if batch:
+        frappe.db.bulk_insert("CRM Task", fields=fields, values=batch)
+        frappe.db.commit()
+
+    set_next_val("CRM Task", next_id + 1, is_val_used=False)
+    frappe.db.commit()
+    print(f"   -> Created {len(leads) * 4} CRM Tasks across {len(leads)} CRM Leads.")
 
 
 def main():
     site = sys.argv[1] if len(sys.argv) > 1 else "menucka.local"
     csv_path = sys.argv[2] if len(sys.argv) > 2 else "/tmp/restaurants.csv"
+    tasks_only = "--tasks-only" in sys.argv
 
     frappe.init(site=site, sites_path="/home/frappe/frappe-bench/sites")
     frappe.connect()
+
+    if tasks_only:
+        create_lead_tasks()
+        frappe.clear_cache()
+        print(f"Total CRM Tasks: {frappe.db.count('CRM Task')}")
+        return
 
     setup_custom_fields()
     setup_field_layouts()

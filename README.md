@@ -192,6 +192,11 @@ Skript `scripts/migrate_restaurants.py` zabezpečuje kompletnú migráciu sloven
 3. Nastaví predajnú pipeline (`CRM Lead Status`): `In Check` -> `In Contact` -> `Contacted` -> `Replied` -> `Deal` / `Ignored`.
 4. Zoskupí majiteľov podľa `IČO` / obchodného mena a vytvorí pre nich záznamy **CRM Organization** + **Contact**.
 5. Naimportuje všetky reštaurácie ako **CRM Lead** v počiatočnom stave `In Check` a prepojí ich s organizáciou a kontaktom majiteľa.
+6. Vytvorí pre každý **CRM Lead** 4 nadväzujúce obchodné úlohy (**CRM Task**):
+   - `1. Research (Prieskum & overenie)` (`Todo`)
+   - `2. Initial Contact (Prvé oslovenie)` (`Backlog`)
+   - `3. Follow-up (Pripomenutie / reakcia)` (`Backlog`)
+   - `4. Deal Closing (Uzavretie dohody)` (`Backlog`)
 
 ### Spustenie migrácie:
 ```bash
@@ -200,6 +205,7 @@ docker cp scripts/migrate_restaurants.py frappe-backend-1:/tmp/migrate_restauran
 docker exec -w /home/frappe/frappe-bench/sites frappe-backend-1 \
   /home/frappe/frappe-bench/env/bin/python /tmp/migrate_restaurants.py menucka.local /tmp/restaurants.csv
 ```
+*(Pre samostatné pregenerovanie iba úloh bez reimportu leadov stačí pridať parameter `--tasks-only`)*
 
 ---
 
