@@ -52,7 +52,32 @@ docker exec frappe-backend-1 bench --site <SITE> mariadb -e \
 
 `status = Sent` a prázdny `error` znamená, že SMTP server správu prijal. Pri `Error` je dôvod v stĺpci `error`. Bežná pošta z CRM/Helpdesku ide cez frontu (`Email Queue`), ktorú odosiela scheduler + worker, takže scheduler musí byť zapnutý (`bench --site <SITE> scheduler status`).
 
-## 3. Gmail ako SMTP s vlastnou doménou v `From`
+## 3. Odkazy v e-mailoch: `host_name` (nutné pre „Login with Email Link“)
+
+Frappe skladá odkazy v e-mailoch (prihlásenie cez e-mail, reset hesla, odkazy na tikety a dokumenty) cez `get_url()`. Prihlasovací odkaz sa generuje s `allow_header_override=False`, takže **ignoruje `Host` hlavičku** požiadavky. Bez `host_name` použije názov stránky, napr. `http://<SITE>/api/method/frappe.www.login.login_via_key?key=…`, a ten mimo lokálnej siete neexistuje. E-mail sa odošle (`Sent`), ale odkaz nefunguje.
+
+Nastav verejnú URL, cez ktorú sa na systém reálne pristupuje (vrátane `https://`), a reštartuj procesy. Gunicorn a workery majú `site_config.json` načítaný v pamäti, takže samotný `clear-cache` nestačí:
+
+```bash
+docker exec frappe-backend-1 bench --site <SITE> set-config host_name <PUBLIC_URL>
+docker compose -f compose.yaml -f compose.vps.yaml restart backend queue-long queue-short scheduler websocket
+```
+
+Overenie (vypíše vygenerovaný odkaz s maskovaným kľúčom):
+
+```bash
+docker exec -i frappe-backend-1 bench --site <SITE> console <<'PY'
+from frappe.utils import get_url
+print(get_url("/api/method/frappe.www.login.login_via_key?key=***", allow_header_override=False))
+PY
+```
+
+Ďalej pre „Login with Email Link“ platí:
+- Musí byť zapnuté v **System Settings ➔ Login ➔ Login with email link** (`login_with_email_link=1`, platnosť `login_with_email_link_expiry` v minútach).
+- Odkaz príde iba **existujúcemu a aktívnemu používateľovi** (`User`). Pri neznámej adrese Frappe zámerne nič neodošle ani nezobrazí chybu (ochrana pred zisťovaním účtov).
+- Odkaz je jednorazový, druhé otvorenie vráti 403.
+
+## 4. Gmail ako SMTP s vlastnou doménou v `From`
 
 Gmail prijme SMTP správu s ľubovoľnou `From` hlavičkou, ale **potichu ju prepíše** na `<SMTP_USER>`, ak `<FROM>` nie je overený alias. Že je `status = Sent`, ešte neznamená, že príjemca vidí `<FROM>`. Over to v Gmaile v priečinku **Odoslané**.
 
@@ -68,7 +93,7 @@ Aby príjemcovia videli `<FROM>`:
 
 > DKIM podpis pre vlastnú doménu cez osobný Gmail nastaviť nejde (to vie iba Google Workspace). Ak záleží na doručiteľnosti, zváž transakčného poskytovateľa (Brevo, Mailgun, SES, …) s DKIM pre doménu. Stačí potom zmeniť `<SMTP_HOST>/<SMTP_PORT>/<SMTP_USER>/<SMTP_PASS>` a znovu spustiť skript.
 
-## 4. Zmena hesla / rotácia App Password
+## 5. Zmena hesla / rotácia App Password
 
 Vygeneruj nové App Password, spusti krok 1 znova s novým heslom (skript existujúci účet aktualizuje) a potom staré heslo v Google účte zruš.
 
@@ -77,7 +102,9 @@ Vygeneruj nové App Password, spusti krok 1 znova s novým heslom (skript existu
 | Problém | Príčina | Riešenie |
 | :--- | :--- | :--- |
 | `SMTPAuthenticationError` (535) | bežné heslo namiesto App Password, alebo vypnuté 2FA | zapni 2FA, vygeneruj App Password |
-| `Sent`, ale príjemca vidí Gmail adresu | `<FROM>` nie je *Send mail as* alias | krok 3.1 |
-| Pošta padá do spamu | SPF domény nepovoľuje Google, chýba DMARC/DKIM | krok 3.2 a 3.3 |
+| Login link / reset hesla vedie na `http://<SITE>/…` | chýba `host_name`, alebo procesy bežia so starým configom | krok 3 vrátane reštartu |
+| Login link vôbec nepríde | adresa nepatrí aktívnemu `User`, alebo je funkcia vypnutá | krok 3, System Settings |
+| `Sent`, ale príjemca vidí Gmail adresu | `<FROM>` nie je *Send mail as* alias | krok 4.1 |
+| Pošta padá do spamu | SPF domény nepovoľuje Google, chýba DMARC/DKIM | krok 4.2 a 4.3 |
 | Maily ostávajú `Not Sent` | nebeží scheduler alebo worker | `bench --site <SITE> enable-scheduler`, skontroluj `queue-*` kontajnery |
 | Timeout pri spojení | poskytovateľ VPS blokuje odchádzajúce SMTP porty | over `nc -vz <SMTP_HOST> <SMTP_PORT>` z VPS, prípadne iný port (465/587) |

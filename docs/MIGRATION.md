@@ -159,6 +159,8 @@ curl -s -o /dev/null -w "%{http_code}\n" http://<VPS_HOST>:<PORT>/helpdesk      
 
 Spusti dotaz na počty z kroku 1 aj na VPS. Čísla musia sedieť.
 
+Ak sa po migrácii mení verejná URL (reverse proxy, doména), nastav `host_name`, inak odkazy v e-mailoch (login link, reset hesla) vedú na `http://<SITE>`. Postup je v [EMAIL.md, krok 3](EMAIL.md#3-odkazy-v-e-mailoch-host_name-nutné-pre-login-with-email-link).
+
 ## 6. Zaradenie do restic zálohy
 
 1. **Excludes**: surové DB a redis dáta vynechaj. Patria uid 999, takže restic bežiaci ako bežný používateľ ich nemusí vedieť prečítať (exit code 3 = neúplný snapshot, cron skript to vyhodnotí ako chybu), a živá kópia DB aj tak nie je konzistentná. Do exclude súboru restic pridaj:
