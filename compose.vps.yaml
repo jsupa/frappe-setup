@@ -1,0 +1,45 @@
+# VPS override: bind-mounted data (zálohovateľné cez restic) + fix pre mariadb-dump SSL.
+# Použitie: docker compose -f compose.yaml -f compose.vps.yaml up -d
+# Vyžaduje FRAPPE_DATA_DIR (absolútna cesta) v .env, adresáre vytvorí scripts/init-data-dir.sh.
+
+x-mycnf: &mycnf ./docker/resources/my.cnf:/home/frappe/.my.cnf:ro
+
+services:
+  backend:
+    volumes:
+      - *mycnf
+  queue-long:
+    volumes:
+      - *mycnf
+  queue-short:
+    volumes:
+      - *mycnf
+  scheduler:
+    volumes:
+      - *mycnf
+
+volumes:
+  sites:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${FRAPPE_DATA_DIR:?set FRAPPE_DATA_DIR in .env}/sites
+  logs:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${FRAPPE_DATA_DIR}/logs
+  db-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${FRAPPE_DATA_DIR}/db
+  redis-queue-data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${FRAPPE_DATA_DIR}/redis-queue

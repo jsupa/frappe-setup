@@ -87,9 +87,27 @@ Ak používaš plugin **openmediavault-compose**:
 
 ---
 
+## ☁️ Nasadenie na VPS (bind mounty + restic)
+
+Na VPS sa používa override `compose.vps.yaml`, ktorý:
+- mapuje všetky volumes do `FRAPPE_DATA_DIR` (aby ich mohol zálohovať restic bežiaci ako bežný používateľ),
+- mountuje `docker/resources/my.cnf` (`ssl=0`), bez ktorého `bench backup` zlyhá na `TLS/SSL error`.
+
+```bash
+# .env navyše obsahuje: HTTP_PORT=<PORT> a FRAPPE_DATA_DIR=<absolútna cesta>/data
+./scripts/init-data-dir.sh "$FRAPPE_DATA_DIR"
+docker compose -f compose.yaml -f compose.vps.yaml up -d
+```
+
+Konzistentný dump pred restic behom: `./scripts/backup.sh <SITE>` (zálohy idú do `data/sites/<SITE>/private/backups/`). Do restic excludes patrí `data/db` a `data/redis-queue`.
+
+Kompletný postup presunu existujúcej inštancie (OMV ➔ VPS) vrátane dát, restic integrácie, obnovy a rollbacku: **[docs/MIGRATION.md](docs/MIGRATION.md)**.
+
+---
+
 ## 🔗 Prístup k aplikáciám
 
-Po spustení otvor prehliadač na IP adrese tvojho servera (napr. `192.168.1.183`):
+Po spustení otvor prehliadač na IP adrese tvojho servera:
 
 | Aplikácia | URL cesta | Popis |
 | :--- | :--- | :--- |
@@ -110,18 +128,24 @@ Po spustení otvor prehliadač na IP adrese tvojho servera (napr. `192.168.1.183
 frappe-setup/
 ├── README.md                 # Táto dokumentácia
 ├── compose.yaml              # Docker Compose definícia pre všetky služby
+├── compose.vps.yaml          # VPS override: bind mounty do FRAPPE_DATA_DIR + my.cnf
 ├── .env.example              # Vzorový konfiguračný súbor
+├── docs/
+│   └── MIGRATION.md          # Presun OMV ➔ VPS, restic záloha, obnova, rollback
 ├── docker/
 │   ├── Containerfile         # Viacfázový Dockerfile s patchom pre v16
 │   ├── apps.json             # Manifest aplikácií (telephony, helpdesk, crm)
 │   ├── build.sh              # Skript na zostavenie vlastného docker image
 │   └── resources/
+│       ├── my.cnf            # MariaDB klient bez SSL (pre bench backup)
 │       └── core/
 │           ├── main-entrypoint.sh # Entrypoint prepájajúci assety na volume
 │           └── start.sh           # Štartovací skript pre Gunicorn
 └── scripts/
     ├── enable-scheduler.sh   # Pomocný skript na zapnutie schedulera
-    └── console.sh            # Rýchly prístup do bash konzoly kontajnera
+    ├── console.sh            # Rýchly prístup do bash konzoly kontajnera
+    ├── init-data-dir.sh      # Vytvorí bind-mount adresáre s vlastníkmi (VPS)
+    └── backup.sh             # bench backup --with-files pred restic behom (VPS)
 ```
 
 ---
@@ -149,7 +173,7 @@ Pri inštalácii Frappe CRM a Helpdesk vo verzii 16 s Dockerom sme vyriešili ni
   Vďaka tomu sa klient pripojí k MariaDB bez SSL po bezpečnej internej Docker sieti.
 
 ### 3. Smerovanie požiadaviek podľa IP (Bez nutnosti DNS)
-- **Problém**: Frappe je štandardne multi-tenant systém a stránku vyberá podľa HTTP hlavičky `Host`. Ak používateľ pristupuje cez `http://192.168.1.183:8080`, Frappe štandardne hľadá stránku s názvom IP adresy.
+- **Problém**: Frappe je štandardne multi-tenant systém a stránku vyberá podľa HTTP hlavičky `Host`. Ak používateľ pristupuje cez `http://<IP_SERVERA>:8080`, Frappe štandardne hľadá stránku s názvom IP adresy.
 - **Riešenie**: Premenná `FRAPPE_SITE_NAME_HEADER=menucka.local` zabezpečí, že Nginx automaticky pridáva hlavičku `X-Frappe-Site-Name: menucka.local` na každý prichádzajúci request, takže stránka funguje okamžite cez IP aj lokálnu doménu.
 
 ---
