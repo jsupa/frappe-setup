@@ -105,6 +105,12 @@ Kompletný postup presunu existujúcej inštancie (OMV ➔ VPS) vrátane dát, r
 
 ---
 
+## ✉️ Odosielanie e-mailov
+
+Odchádzajúci SMTP účet (napr. Gmail s App Password) sa nastaví skriptom `scripts/setup_email.py` (heslo ide cez stdin, nie cez argumenty). Postup, test, Gmail alias + SPF/DMARC pre vlastnú doménu v `From` a riešenie problémov: **[docs/EMAIL.md](docs/EMAIL.md)**.
+
+---
+
 ## 🔗 Prístup k aplikáciám
 
 Po spustení otvor prehliadač na IP adrese tvojho servera:
@@ -131,7 +137,8 @@ frappe-setup/
 ├── compose.vps.yaml          # VPS override: bind mounty do FRAPPE_DATA_DIR + my.cnf
 ├── .env.example              # Vzorový konfiguračný súbor
 ├── docs/
-│   └── MIGRATION.md          # Presun OMV ➔ VPS, restic záloha, obnova, rollback
+│   ├── MIGRATION.md          # Presun OMV ➔ VPS, restic záloha, obnova, rollback
+│   └── EMAIL.md              # SMTP odosielanie, test, Gmail alias, SPF/DMARC
 ├── docker/
 │   ├── Containerfile         # Viacfázový Dockerfile s patchom pre v16
 │   ├── apps.json             # Manifest aplikácií (telephony, helpdesk, crm)
@@ -145,7 +152,8 @@ frappe-setup/
     ├── enable-scheduler.sh   # Pomocný skript na zapnutie schedulera
     ├── console.sh            # Rýchly prístup do bash konzoly kontajnera
     ├── init-data-dir.sh      # Vytvorí bind-mount adresáre s vlastníkmi (VPS)
-    └── backup.sh             # bench backup --with-files pred restic behom (VPS)
+    ├── backup.sh             # bench backup --with-files pred restic behom (VPS)
+    └── setup_email.py        # Odchádzajúci SMTP Email Account (konfigurácia cez stdin)
 ```
 
 ---
